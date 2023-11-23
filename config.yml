@@ -1,0 +1,105 @@
+variables_and_freqs: &var_and_freq
+  tasmax: D
+  tasmin: D
+  pr: D
+
+create:
+  project: # argument to create the project
+    name: Potential evapotranspiration
+    version: 1.0.0
+    description: Workflow to calculate potential evapotranspiration
+    id: t1
+  create: True
+  overwrite: True
+
+tasks:
+  - extract
+
+extract:
+  reconstruction:
+    terraclimate: &rec
+      dask:
+        n_workers: 2
+        threads_per_worker: 3
+        memory_limit: 10GB
+      subset_shape:
+        start_date: '1976'
+        end_date: '2000'
+        shape: 'https://raw.githubusercontent.com/johan/world.geo.json/master/countries/CAN.geo.json'
+    cru_ts: *rec
+  simulation:
+    dask:
+      n_workers: 2
+      threads_per_worker: 3
+      memory_limit: 10GB
+    search_data_catalogs:
+      variables_and_freqs: *var_and_freq
+      match_hist_and_fut: True
+      allow_conversion: True
+      allow_resampling: False
+      other_search_criteria: # put the simulations you want here
+        mip_era: CMIP6
+        experiment:
+          - ssp245
+          - ssp370
+        processing_level:
+          - biasadjusted
+          - regridded
+        bias_adjust_project:
+          - ESPO-G6-R2
+          - ESPO-G6-E5L
+    extract_dataset:
+      periods:
+        - '1976'
+        - '2100'
+      xr_combine_kwargs:
+        combine_attrs: override
+      xr_open_kwargs:
+        chunks:
+          lat: 10
+          lon: 10
+          time: 365
+      region:
+        name: Can
+        method: shape
+        shape: 'https://raw.githubusercontent.com/johan/world.geo.json/master/countries/CAN.geo.json'
+    floor: D
+
+regrid:
+  target: ESPO-G6-E5L_CMIP6_ScenarioMIP_CSIRO_ACCESS-ESM1-5_ssp370_r1i1p1f1_NAM
+  regrid_dataset:
+    weights_location: /exec/scgoulet/PET/weights/
+    regridder_kwargs:
+      method: bilinear
+      extrap_method: inverse_dist
+      locstream_out: False
+      reuse_weights: False
+
+save:
+  save_kwargs:
+    mode: o
+    rechunk:
+      lat: -1
+      lon: -1
+
+logging:
+    formatters:
+        default:
+            format: '%(asctime)s %(levelname)-8s %(name)-15s %(message)s'
+            datefmt: '%Y-%m-%d %H:%M:%S'
+    handlers:
+        console:
+            class : logging.StreamHandler
+            formatter: default
+            level : INFO
+        file:
+            class: logging.FileHandler
+            formatter: default
+            level : DEBUG
+    loggers:
+        pet_poly:
+            level: INFO
+            handlers: [file, console]
+
+dask: # general dask arguments
+  array.slicing.split_large_chunks: False
